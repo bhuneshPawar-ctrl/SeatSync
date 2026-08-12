@@ -12,7 +12,7 @@ const userSchema = new mongoose.Schema({
             }
         }, 
     }, 
-    name : {
+    userName : {
         type : String, 
         maxLength : [50, 'name exceeds maximum length of 50'],
         trim : true
