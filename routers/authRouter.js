@@ -54,4 +54,6 @@ router.post('/login', async (req, res) => {
         console.error('ERROR-loginError', err.message);
         sendError(res, 500, 'Something happened during login'); 
     }
-})
+});
+
+module.exports = router; 
