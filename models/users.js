@@ -20,6 +20,14 @@ const userSchema = new mongoose.Schema({
     password : {
         type : String, 
         required : true
+    }, 
+    role : {
+        type : String, 
+        enum : {
+            values : ['Admin', 'User'], 
+            message : 'Invalid role, Choose from "Admin, User"',
+        }, 
+        default : 'User',
     }
 
 });

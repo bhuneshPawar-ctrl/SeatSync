@@ -13,12 +13,17 @@ const userAuth = async (req, res, next) => {
         if(!token){
             return sendError(res, 401, 'Invalid User, please login again');
         }
-        const decodedPayload = await jwtVerifyAsync(token, JWT_SECRET); 
+        let decodedPayload = ''; 
+        try{
+            decodedPayload = await jwtVerifyAsync(token, JWT_SECRET); 
+        }catch(err){
+            return sendError(res, 401, 'Invalid token, please login again');
+        }
         const userDoc = await Users.findById(decodedPayload._id).select('-password');
         if(!userDoc){
             return sendError(res, 404, 'User not found')
         }
-        res.user = userDoc; 
+        req.user = userDoc; 
         next(); 
     }catch(err){
         console.error('ERROR-authMW:', err.message);

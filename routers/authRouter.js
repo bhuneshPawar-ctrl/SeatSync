@@ -5,28 +5,30 @@ const validator = require('validator');
 const bcrypt = require('bcrypt'); 
 const Users = require('../models/users');
 const jwt = require('jsonwebtoken'); 
-const util = require('util'); 
+
 
 const SALT_ROUNDS = 10; 
-const signJwtAync = util.promisify(jwt.sign);
+
+const util = require('util'); 
+const signJwtAsync = util.promisify(jwt.sign);
 
 router.post('/signup', async (req, res) => {
     try{
         const { emailId, userName, password } = req.body; 
         if(!emailId || !password || password.trim().length === 0 || !validator.isEmail(emailId)){
-            return sendError(res, 401, 'Provide both valid EmailId and Password or EmailId already exists.'); 
+            return sendError(res, 400, 'Provide both valid EmailId and Password or EmailId already exists.'); 
         }
         const userExists = await Users.exists({emailId}); 
         if(userExists){ 
-            return sendError(res, 401, 'Provide both valid EmailId and Password or EmailId already exists'); 
+            return sendError(res, 400, 'Provide both valid EmailId and Password or EmailId already exists'); 
         }
         const hashedPass = await bcrypt.hash(password, SALT_ROUNDS); 
         await Users.create({
             emailId, 
             userName,
-            password : hashedPass
+            password : hashedPass,
         })
-        sendSuccess(res, 201, 'User signed up successfully');
+        sendSuccess(res, 201, `${userName} signed up successfully`);
     }catch(err){
         console.error('ERROR-signUpError', err.message); 
         sendError(res, 500, 'Something happened during SignUp')
@@ -47,8 +49,8 @@ router.post('/login', async (req, res) => {
         if(!isPassValid){
             return sendError(res, 401, 'Invalid Credentials');
         }
-        const token = await signJwtAync({ _id : userDoc._id}, process.env.JWT_TOKEN, {expiresIn : '1d'});
-        res.cookie('token', token, { httpOnly : true });
+        const token = await signJwtAsync({ _id : userDoc._id}, process.env.JWT_SECRET, {expiresIn : '1d'});
+        res.cookie('token', token, { httpOnly : true, secure : true});
         sendSuccess(res, 200, 'login successfull', {});
     }catch(err){
         console.error('ERROR-loginError', err.message);
