@@ -1,5 +1,4 @@
 const mongoose = require('mongoose'); 
-const { schema } = require('./events');
 
 const bookingSchema = new mongoose.Schema({
     userId : {
