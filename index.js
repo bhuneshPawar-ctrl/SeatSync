@@ -4,6 +4,8 @@ require('dotenv').config({ quiet : true});
 const connectDB = require('./config/database'); 
 const adminRouter = require('./routers/adminRouter'); 
 const authRouter = require('./routers/authRouter')
+const bookingRouter = require('./routers/bookingRouter'); 
+const getRouter = require('./routers/getRouter');
 const {sendSuccess, sendError} = require('./utils/response');
 const cookieParser = require('cookie-parser');
 
@@ -20,6 +22,8 @@ app.use(express.json());
 app.use(cookieParser());
 app.use('/', authRouter); 
 app.use('/', adminRouter); 
+app.use('/', bookingRouter); 
+app.use('/', getRouter);
 
 
 app.get('/', (req, res, next) => {
