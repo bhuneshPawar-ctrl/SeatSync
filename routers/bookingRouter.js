@@ -4,6 +4,7 @@ const {sendSuccess, sendError} = require('../utils/response');
 const validator = require('validator'); 
 const Users = require('../models/users');
 const userAuth = require('../middlewares/auth');  
+const rateLimiter = require('../middlewares/rateLimiter');
 const Events = require('../models/events');
 const Bookings = require('../models/bookings');
 const mongoose = require('mongoose');
@@ -11,7 +12,7 @@ const { delCache } = require('../utils/redis');
 
 const VALID_TICKET_CATEGORY = new Set(['VIP', 'Standard']);
 
-router.post('/book', userAuth, async (req, res) => {
+router.post('/book', userAuth, rateLimiter('book', 30, 5), async (req, res) => {
     try{
         const {eventId, ticketDetails} = req.body; 
         if(!eventId || !ticketDetails || !Array.isArray(ticketDetails) || ticketDetails.length === 0){
