@@ -5,6 +5,8 @@ const validator = require('validator');
 const Users = require('../models/users');
 const userAuth = require('../middlewares/auth');  
 const Events = require('../models/events'); 
+const redis = require('../config/redis');
+
 
 
 router.post('/createEvent', userAuth, async (req, res) => {
@@ -53,6 +55,13 @@ router.post('/createEvent', userAuth, async (req, res) => {
             date, 
         }
         await Events.create(event); 
+        try{
+            const eventsCacheKey = `cache:events:upcoming`; 
+            redis.del(eventsCacheKey);
+        }catch(err){
+            console.error('ERROR-redisCache', err.message);
+        }
+        
         sendSuccess(res, 201, 'Event created successfully'); 
     }catch(err){
         console.error('ERROR-eventCreation', err.message); 

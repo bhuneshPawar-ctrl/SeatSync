@@ -7,6 +7,7 @@ const userAuth = require('../middlewares/auth');
 const Events = require('../models/events');
 const Bookings = require('../models/bookings');
 const mongoose = require('mongoose');
+const { delCache } = require('../utils/redis');
 
 const VALID_TICKET_CATEGORY = new Set(['VIP', 'Standard']);
 
@@ -67,6 +68,8 @@ router.post('/book', userAuth, async (req, res) => {
                     totalAmount
                 }], { session });
             });
+            const cachedBookingKey = `cache:bookings:${req.user._id}`;
+            await delCache(cachedBookingKey); 
             return sendSuccess(res, 201, 'Booking Successful!');
         }catch(err){
             console.error('ERROR-bookingTransaction: ', err)
