@@ -10,8 +10,6 @@ const Bookings = require('../models/bookings');
 const mongoose = require('mongoose');
 const { delCache } = require('../utils/redis');
 
-const VALID_TICKET_CATEGORY = new Set(['VIP', 'Standard']);
-
 router.post('/book', userAuth, rateLimiter('book', 30, 5), async (req, res) => {
     try{
         const {eventId, ticketDetails} = req.body; 
@@ -22,6 +20,7 @@ router.post('/book', userAuth, rateLimiter('book', 30, 5), async (req, res) => {
         if (!mongoose.isValidObjectId(eventId)) {
             return sendError(res, 400, 'Invalid Event ID format');
         }
+        const VALID_TICKET_CATEGORY = new Set(['VIP', 'Standard']);
         for(const ticket of ticketDetails){
             let category = ticket.category; 
             if(!VALID_TICKET_CATEGORY.has(category)){
@@ -31,6 +30,7 @@ router.post('/book', userAuth, rateLimiter('book', 30, 5), async (req, res) => {
             if(Number.isNaN(ticketCntCheck) || !Number.isInteger(ticketCntCheck) || ticketCntCheck <= 0){
                 return sendError(res, 400, 'Invalid ticket quantity') 
             }
+            VALID_TICKET_CATEGORY.delete(category);
             ticket.quantity = ticketCntCheck; 
         };
         // start transaction
@@ -66,6 +66,7 @@ router.post('/book', userAuth, rateLimiter('book', 30, 5), async (req, res) => {
                     userId : req.user._id, 
                     eventId, 
                     bookingRequest, 
+                    status : 'CONFIRMED',
                     totalAmount
                 }], { session });
             });
