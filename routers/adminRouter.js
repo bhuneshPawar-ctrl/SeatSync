@@ -8,7 +8,7 @@ const Events = require('../models/events');
 const redis = require('../config/redis');
 const Bookings = require('../models/bookings');
 
-
+const { getEventAnalytics, getEventCategoryAnalytics, getTopUserAnalytics, getRiskyEvents, getConfirmRate } = require('../services/analytics.service');
 
 router.post('/createEvent', userAuth, async (req, res) => {
     try{
@@ -75,57 +75,54 @@ router.get('/analytics', userAuth, async(req, res) => {
         if(req.user.role !== 'Admin'){
             return sendError(res, 401, 'Only admins can analyze the data.')
         }
-        let thirtyDaysAgo = new Date(); 
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30); 
-        const eventAnalyticsRes = await Bookings.aggregate([
-            {
-                $match : {
-                    status : 'CONFIRMED', 
-                    createdAt : { $gte : thirtyDaysAgo }
-                }
-            }, 
-            {
-                $unwind : "$bookingRequest"
-            },
-            {
-                $group : {
-                    _id : "$bookingRequest.category", 
-                    totalRevenue : { 
-                        $sum : "$bookingRequest.price"
-                        // $multiply: ["$bookingRequest.quantity", "$bookingRequest.price"]
-                    },
-                    totalTicketsSold : { $sum : "$bookingRequest.quantity" }, 
-                    totalOrders : { $sum : 1 }
-                }
-            }, 
-            // {
-            //     $lookup : {
-            //         from : "events", 
-            //         localField : "_id", 
-            //         foreignField : "_id", 
-            //         as : "eventData"
-            //     }
-            // }, 
-            // {
-            //     $unwind : "$eventData"
-            // }, 
-            {
-                $project :{
-                    _id : 0, 
-                    category : "$_id",
-                    // eventName : "$eventData.eventName", 
-                    totalRevenue : 1, 
-                    totalTicketsSold : 1, 
-                    totalOrders : 1, 
-                }
-            }, 
-            { 
-                $sort : {
-                    totalRevenue : -1
-                }
-            }
-        ])
-        sendSuccess(res, 200, 'Analytics fetched successfully', eventAnalyticsRes)
+        const reportType = req.query.reportType || "event-category"; 
+        let analyticsData;
+        switch(reportType){
+            case "event-category":
+                analyticsData = await getEventCategoryAnalytics(); 
+                break;
+            case "event":
+                analyticsData = await getEventAnalytics(); 
+                break;
+            case "topUsers":
+                analyticsData = await getTopUserAnalytics();
+                break;
+            case "riskyEvents":
+                analyticsData = await getRiskyEvents();
+                break;
+            case "confirmRate":
+                analyticsData = await getConfirmRate();
+                break; 
+            default:
+                analyticsData = await Bookings.aggregate([
+                    {
+                        $match : { status : 'CONFIRMED' }
+                    }, 
+                    {
+                        $unwind : "$bookingRequest"
+                    }, 
+                    {
+                        $group:{
+                            _id : "$bookingRequest.category", 
+                            ticketsSold : { $sum : "$bookingRequest.quantity" }, 
+                            totalRevenue : { $sum : "$bookingRequest.price" }, 
+                            totalOrders : { $sum : 1 }
+                        }
+                    }, 
+                    {
+                        $project : {
+                            _id : 0, 
+                            categoryName : "$_id", 
+                            totalRevenue : 1, 
+                            ticketsSold : 1, 
+                            totalOrders : 1
+                        }
+                    }, 
+                    { $sort : { totalRevenue : -1 }}
+                ]);
+
+        }
+        sendSuccess(res, 200, 'Analytics fetched successfully', analyticsData)
     }catch(err){
         console.error('ERROR-analyticsServer: ', err.message)
         sendError(res, 500, 'Something happened during Analysis.')
