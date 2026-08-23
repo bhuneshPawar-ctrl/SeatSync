@@ -44,6 +44,36 @@ const getEventAnalytics = async (days = 30, limit = 10) => {
     return result; 
 }; 
 
+const getCategoryAnalytics = async () => {
+    const result = await Bookings.aggregate([
+        {
+            $match : { status : 'CONFIRMED' }
+        }, 
+        {
+            $unwind : "$bookingRequest"
+        }, 
+        {
+            $group:{
+                _id : "$bookingRequest.category", 
+                ticketsSold : { $sum : "$bookingRequest.quantity" }, 
+                totalRevenue : { $sum : "$bookingRequest.price" }, 
+                totalOrders : { $sum : 1 }
+            }
+        }, 
+        {
+            $project : {
+                _id : 0, 
+                categoryName : "$_id", 
+                totalRevenue : 1, 
+                ticketsSold : 1, 
+                totalOrders : 1
+            }
+        }, 
+        { $sort : { totalRevenue : -1 }}
+    ]);
+    return result; 
+}
+
 const getEventCategoryAnalytics = async () => {
     const result = await Bookings.aggregate([
         {
@@ -157,13 +187,10 @@ const getRiskyEvents = async () => {
         {
             $addFields : {
                 percentSold : {
-                    $multiply : [{
-                        $divide : [{
-                            $subtract : [ "$tickets.totalCount", "$tickets.availableCount" ]
-                        },
-                        "$tickets.totalCount" ]    
-                    }, 
-                    100 ] 
+                    $round : [
+                        { 
+                            $multiply : [{ $divide : [{ $subtract : [ "$tickets.totalCount", "$tickets.availableCount" ]}, "$tickets.totalCount" ]}, 100 ] 
+                }, 2]
                 }
             }
         },
@@ -216,11 +243,9 @@ const getConfirmRate = async () => {
         {
             $addFields : {
                 confirmRate : {
-                    $multiply : [
-                        {
-                            $divide : ["$confirmCount", "$totalCount"]
-                        }, 
-                        100
+                    $round : [
+                        { $multiply : [ { $divide : ["$confirmCount", "$totalCount"] }, 100 ] },
+                        2
                     ]
                 }
             }
@@ -250,4 +275,7 @@ const getConfirmRate = async () => {
     return result;
 };
 
-module.exports = { getEventAnalytics, getEventCategoryAnalytics, getTopUserAnalytics, getRiskyEvents, getConfirmRate };
+module.exports = { getEventAnalytics, getEventCategoryAnalytics,
+    getTopUserAnalytics, getRiskyEvents,
+    getConfirmRate,  getCategoryAnalytics 
+};
