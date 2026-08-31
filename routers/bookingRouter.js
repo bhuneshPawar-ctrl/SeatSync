@@ -9,9 +9,13 @@ const Events = require('../models/events');
 const Bookings = require('../models/bookings');
 const mongoose = require('mongoose');
 const { delCache } = require('../utils/redis');
+const redis = require('../config/redis'); 
 
-router.post('/book', userAuth, rateLimiter('book', 30, 5), async (req, res) => {
+
+router.post('/book', rateLimiter('book', 30, 5), async (req, res) => {
     try{
+        const dummyId = '6a806f9d4b4b7a3fdf7b1a1a';// add userAuth after tests
+        req.user = {_id : dummyId} 
         const {eventId, ticketDetails} = req.body; 
         if(!eventId || !ticketDetails || !Array.isArray(ticketDetails) || ticketDetails.length === 0){
             return sendError(res, 400, 'Invalid event details'); 
@@ -20,6 +24,7 @@ router.post('/book', userAuth, rateLimiter('book', 30, 5), async (req, res) => {
         if (!mongoose.isValidObjectId(eventId)) {
             return sendError(res, 400, 'Invalid Event ID format');
         }
+        const lockKeyArr = []; 
         const VALID_TICKET_CATEGORY = new Set(['VIP', 'Standard']);
         for(const ticket of ticketDetails){
             let category = ticket.category; 
@@ -32,10 +37,33 @@ router.post('/book', userAuth, rateLimiter('book', 30, 5), async (req, res) => {
             }
             VALID_TICKET_CATEGORY.delete(category);
             ticket.quantity = ticketCntCheck; 
+            // push the category to locked keys array
+            const lockKey = `lock:event-category:${eventId}:${category}`
+            lockKeyArr.push(lockKey)
         };
+        // redis locking 
+        const acquiredLocks = [];
         // start transaction
         const session = await mongoose.startSession();
         try {
+            for(const lockKey of lockKeyArr){
+                const lockCheck = await redis.set(lockKey, req.user._id, { nx : true, ex : 10 });
+                if(!lockCheck){
+                    for(const acquiredLock of acquiredLocks){
+                        const lockHolder = await redis.get(acquiredLock); 
+                        if(lockHolder === req.user._id.toString()){
+                            await redis.del(acquiredLock);
+                        }
+                    }
+                    return sendError(res, 409, 'Someone else is booking, retry after some time.')
+                }
+                acquiredLocks.push(lockKey)
+            }
+            // console.log(lockCheck)
+            hasLock = true; 
+            // console.log("Lock acquired by "+req.user.userName+" ! Sleeping for 10 seconds...");
+            // await new Promise(resolve => setTimeout(resolve, 10000));
+            // console.log("Waking up, processing database transaction...");
             await session.withTransaction( async () => {
                 const bookingRequest = []; 
                 let totalAmount = 0; 
@@ -63,7 +91,7 @@ router.post('/book', userAuth, rateLimiter('book', 30, 5), async (req, res) => {
                 };
                 await event.save( { session });
                 await Bookings.create([{
-                    userId : req.user._id, 
+                    userId : req.user._id,
                     eventId, 
                     bookingRequest, 
                     status : 'CONFIRMED',
@@ -78,6 +106,12 @@ router.post('/book', userAuth, rateLimiter('book', 30, 5), async (req, res) => {
             return sendError(res, 400, err.message || 'Booking failed')
         }finally{
             session.endSession();
+            for(const acquiredLock of acquiredLocks){
+                const lockHolder = await redis.get(acquiredLock); 
+                if(lockHolder === req.user._id.toString()){
+                    await redis.del(acquiredLock);
+                }
+            }
         }
     }catch(err){
         console.error('ERROR-BookingError: ', err); 
