@@ -18,12 +18,14 @@ connectDB().then(() => {
     })
 }).catch((err) => console.error('ERROR-DBConnection', err,message));
 
+require('./workers/restockWorker');
 app.use(express.json());
 app.use(cookieParser());
 app.use('/', authRouter); 
 app.use('/', adminRouter); 
 app.use('/', bookingRouter); 
 app.use('/', getRouter);
+
 
 
 app.get('/', (req, res, next) => {
