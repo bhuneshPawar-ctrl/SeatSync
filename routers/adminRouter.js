@@ -129,4 +129,42 @@ router.get('/analytics', userAuth, async(req, res) => {
     }
 });
 
+router.delete('/events/:eventId', userAuth, async(req, res) => {
+    try{
+        if(req.user.role !== 'Admin'){
+            return sendError(res, 401, 'Only admins are allowed to manipulate db.')
+        }
+        const { eventId } = req.params; 
+        const activeBookings = await Bookings.exists({
+            eventId : eventId, 
+            status : { $in : ['CONFIRMED', 'PENDING'] } 
+        }); 
+        if(activeBookings){
+            return sendError(res, 400, 'Cannot delete event: Tickets have been sold or are currently in user carts. Refund process required.')
+        }
+        const event = await Events.findById(eventId);
+        if(!event){
+            return sendSuccess(res, 200, 'Event safely deleted.')
+        } 
+        await Events.findByIdAndDelete(eventId); // no check if event exists or not, it does not matter as DELETE is idempotent.
+        try {
+            const key1 = `cache:event:${eventId}`
+            const key2 = `cache:events:upcoming` 
+            redis.del(key2) // its ttl is only 60 secs
+            await redis.del(key1) // needs to be dsleted as its ttl is 1hr
+            // delete from redis inventory 
+            for(const ticket of event.tickets){
+                const inventoryKey = `inventory:event:${eventId}:${ticket.category}`;
+                await redis.del(inventoryKey); 
+            }
+        }catch(err){
+            console.error('ERROR-RedisCleanup on Deletion:', err.message);
+        }
+        return sendSuccess(res, 200, 'Event and associated inventory safely deleted.');
+    }catch(err){
+        console.error('ERROR-DeleteEvent:', err.message)
+        return sendError(res, 500, 'Something happened during deletion of event.');
+    }
+});
+
 module.exports = router; 
