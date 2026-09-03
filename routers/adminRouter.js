@@ -7,10 +7,16 @@ const userAuth = require('../middlewares/auth');
 const Events = require('../models/events'); 
 const redis = require('../config/redis');
 const Bookings = require('../models/bookings');
+require('dotenv').config();
 
 const { getEventAnalytics, getEventCategoryAnalytics,
     getTopUserAnalytics, getRiskyEvents,
     getConfirmRate,  getCategoryAnalytics } = require('../services/aggregationPipeline');
+
+const {GoogleGenAI} = require('@google/genai');
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const ai = new GoogleGenAI({ apiKey : GEMINI_API_KEY });
+
 
 router.post('/createEvent', userAuth, async (req, res) => {
     try{
@@ -126,6 +132,78 @@ router.get('/analytics', userAuth, async(req, res) => {
     }catch(err){
         console.error('ERROR-analyticsServer: ', err.message)
         sendError(res, 500, 'Something happened during Analysis.')
+    }
+});
+
+router.get('/analytics/summary', userAuth, async (req, res) => {
+    try {
+        if(req.user.role !== 'Admin'){
+            return sendError(res, 401, 'Only admins can analyze the data.')
+        }
+        const cacheKey = `cache:analytics:summary`;
+        let summaryData; 
+        try{
+            summaryData = await redis.get(cacheKey); 
+            if(summaryData){
+                return sendSuccess(res, 200, summaryData);
+            }
+        }catch(err){
+            console.error('ERROR-redisCacheAISummary', err.message)
+        }
+        const [
+            eventRevenue, 
+            categoryRevenue, 
+            riskyEvents, 
+            confirmRates,
+            topUsers
+        ] = await Promise.all([
+            getEventAnalytics(30, 5), // Top 5 events last 30 days
+            getCategoryAnalytics(),
+            getRiskyEvents(),
+            getConfirmRate(),
+            getTopUserAnalytics(3)
+        ]);
+
+        // Filter data to save LLM tokens (Only send events that are almost sold out)
+        const criticalInventory = riskyEvents.filter(event => event.almostSoldOut === true);
+
+        const rawData = {
+            topPerformingEvents: eventRevenue,
+            categoryPerformance: categoryRevenue,
+            almostSoldOutEvents: criticalInventory,
+            bookingSuccessRates: confirmRates,
+            topSpenders: topUsers
+        };
+
+        const prompt = `
+            You are a Senior Business Analyst for a ticketing platform named SeatSync. 
+            I am providing you with real-time JSON data generated from our MongoDB aggregation pipelines.
+            Write a concise, 3-4 sentence executive summary for the Admin Dashboard.
+            Highlight the highest-grossing events/categories, identify if any events are critically close to selling out (almostSoldOutEvents), and mention the overall booking success rates.            
+            Keep it highly professional, metric-driven, and easy to read. 
+            Do NOT use markdown formatting (no bolding, no asterisks). Just return plain text.          
+            Here is the data: ${JSON.stringify(rawData)}
+        `;
+
+        let aiSummary = "AI analysis is currently unavailable. Please view the raw charts.";
+        try{
+            const response = await ai.models.generateContent({
+                model: 'gemini-3.1-flash-lite',
+                contents: prompt,
+            });
+            aiSummary = response.text;
+        }catch(err) {
+            console.error("LLM Generation Error:", err.message);
+        }
+        summaryData = {
+            summary: aiSummary,
+            charts: rawData 
+        }
+        await redis.set(cacheKey, summaryData, { ex : 3600 });
+        return sendSuccess(res, 200, summaryData);
+    }catch(err){
+        console.error('ERROR-AdminAnalytics:', err.message);
+        return sendError(res, 500, 'Failed to fetch analytics data');
     }
 });
 

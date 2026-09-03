@@ -11,6 +11,7 @@
     "dev": "nodemon index.js"
   },
   "dependencies": {
+    "@google/genai": "^2.21.0",
     "@upstash/redis": "^1.38.2",
     "bcrypt": "^6.0.0",
     "bullmq": "^6.3.4",
