@@ -70,32 +70,7 @@ router.post('/createEvent', userAuth, async (req, res) => {
         }catch(err){
             console.error('ERROR-redisCachingEvents', err.message);
         }
-        // insert into redis inventory 
-        let try_left = 3; 
-        let status = false; 
-        while(try_left > 0 && !status){
-            try{
-                for(const ticket of newEvent.tickets){
-                    const inventoryKey = `inventory:event:${newEvent._id}:${ticket.category}`;
-                    await redis.set(inventoryKey, ticket.availableCount); 
-                }
-                status = true; 
-            }catch(err){
-                try_left -= 1 
-                if(try_left === 0){
-                    console.error('CRITICAL: Failed to update Redis inventory for Event:', newEvent._id);
-                }
-                else{
-                    // wait 1 sec before retrying
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                }
-            }
-        }
-        if(status){
-            sendSuccess(res, 201, 'Event created successfully'); 
-        }else{
-            sendSuccess(res, 201, 'WARNING : Event created in database but could not be synced with Redis Server. Try manual syncing.')
-        }
+        sendSuccess(res, 201, 'Event created successfully');
     }catch(err){
         console.error('ERROR-eventCreation', err.message); 
         return sendError(res, 500, 'Something went wrong during event creation.')
@@ -148,7 +123,7 @@ router.get('/analytics/summary', userAuth, async (req, res) => {
                 return sendSuccess(res, 200, summaryData);
             }
         }catch(err){
-            console.error('ERROR-redisCacheAISummary', err.message)
+            console.error('ERROR-redisCacheGetAISummary', err.message)
         }
         const [
             eventRevenue, 
@@ -199,7 +174,11 @@ router.get('/analytics/summary', userAuth, async (req, res) => {
             summary: aiSummary,
             charts: rawData 
         }
-        await redis.set(cacheKey, summaryData, { ex : 3600 });
+        try{
+            await redis.set(cacheKey, summaryData, { ex : 600 });
+        }catch(err){
+            console.error('ERROR-redisCacheWriteAISummary', err.message);
+        }
         return sendSuccess(res, 200, summaryData);
     }catch(err){
         console.error('ERROR-AdminAnalytics:', err.message);
@@ -222,9 +201,9 @@ router.delete('/events/:eventId', userAuth, async(req, res) => {
         }
         const event = await Events.findById(eventId);
         if(!event){
-            return sendSuccess(res, 200, 'Event safely deleted.')
+            return sendSuccess(res, 200, 'Event not found.')
         } 
-        await Events.findByIdAndDelete(eventId); // no check if event exists or not, it does not matter as DELETE is idempotent.
+        await Events.findByIdAndDelete(eventId); 
         try {
             const key1 = `cache:event:${eventId}`
             const key2 = `cache:events:upcoming` 

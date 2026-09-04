@@ -12,7 +12,7 @@ const { getCache, setCache, delCache } = require('../utils/redis');
 const redis = require('../config/redis'); 
 const { restockQueue } = require('../config/queue');
 
-router.post('/book', rateLimiter('book', 30, 5), async (req, res) => {
+router.post('/book', async (req, res) => { // add rate limiter as M.W. : rateLimiter('book', 30, 5)
     try{
         const dummyId = '6a806f9d4b4b7a3fdf7b1a1a';// add userAuth after tests
         req.user = {_id : dummyId} 
@@ -57,6 +57,14 @@ router.post('/book', rateLimiter('book', 30, 5), async (req, res) => {
             for(const ticket of ticketDetails){
                 const inventoryKey = `inventory:event:${eventId}:${ticket.category}`; 
                 const quantity = ticket.quantity; 
+                // seed the inventory if not already seeded 
+                const categoryDoc = event.tickets.find( t =>
+                    t.category === ticket.category
+                )
+                if(!categoryDoc){
+                    throw new Error(`Ticket category ${ticket.category} does not exist.`);
+                }
+                await redis.set(inventoryKey, categoryDoc.availableCount, { nx : true });
                 // atomic subtraction from redis 
                 const remaining = await redis.decrby(inventoryKey, quantity); 
                 if(remaining < 0){
@@ -78,6 +86,7 @@ router.post('/book', rateLimiter('book', 30, 5), async (req, res) => {
             // console.log("Lock acquired by "+req.user.userName+" ! Sleeping for 10 seconds...");
             // await new Promise(resolve => setTimeout(resolve, 10000));
             // console.log("Waking up, processing database transaction...");
+
             // create the actual booking request 
             const bookingRequest = [];
             let totalAmount = 0; 
@@ -107,16 +116,14 @@ router.post('/book', rateLimiter('book', 30, 5), async (req, res) => {
             });
 
             // ENQUEUE the jobs to restock queue 
-            for(const reserved of reservedInventory){
-                await restockQueue.add('restock-abandoned-tickets', {
-                    bookingId : newBooking._id.toString(), 
-                    eventId : eventId, 
-                    category : reserved.category, 
-                    quantity : reserved.quantity
-                }, {
-                    delay : 600000
-                });
-            }
+            await restockQueue.add('restock-abandoned-tickets', newBooking._id.toString(), { 
+                delay : 60000, 
+                attempts : 3, 
+                backoff : { type : 'exponential', delay : 2000 }, 
+                removeOnComplete: true, 
+                removeOnFail: { count: 100 }
+            });
+
             // delete from user bookings in redis too.
             const cachedBookingKey = `cache:bookings:${req.user._id}`;
             await delCache(cachedBookingKey); 
