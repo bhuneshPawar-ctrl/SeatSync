@@ -1,13 +1,13 @@
 const express = require('express'); 
 const router = express.Router(); 
 const {sendSuccess, sendError} = require('../utils/response');
-const validator = require('validator'); 
 const Users = require('../models/users');
 const userAuth = require('../middlewares/auth');  
 const Events = require('../models/events'); 
 const redis = require('../config/redis');
 const Bookings = require('../models/bookings');
 require('dotenv').config();
+const { getCache, setCache, delCache } = require('../utils/redis')
 
 const { getEventAnalytics, getEventCategoryAnalytics,
     getTopUserAnalytics, getRiskyEvents,
@@ -117,13 +117,9 @@ router.get('/analytics/summary', userAuth, async (req, res) => {
         }
         const cacheKey = `cache:analytics:summary`;
         let summaryData; 
-        try{
-            summaryData = await redis.get(cacheKey); 
-            if(summaryData){
-                return sendSuccess(res, 200, summaryData);
-            }
-        }catch(err){
-            console.error('ERROR-redisCacheGetAISummary', err.message)
+        summaryData = await getCache(cacheKey); 
+        if(summaryData){
+            return sendSuccess(res, 200, 'Analytics summary fetched successfully', summaryData);
         }
         const [
             eventRevenue, 
@@ -174,11 +170,7 @@ router.get('/analytics/summary', userAuth, async (req, res) => {
             summary: aiSummary,
             charts: rawData 
         }
-        try{
-            await redis.set(cacheKey, summaryData, { ex : 600 });
-        }catch(err){
-            console.error('ERROR-redisCacheWriteAISummary', err.message);
-        }
+        await setCache(cacheKey, summaryData, 180)
         return sendSuccess(res, 200, summaryData);
     }catch(err){
         console.error('ERROR-AdminAnalytics:', err.message);

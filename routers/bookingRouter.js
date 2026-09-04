@@ -1,7 +1,6 @@
 const express = require('express'); 
 const router = express.Router(); 
-const {sendSuccess, sendError} = require('../utils/response');
-const validator = require('validator'); 
+const {sendSuccess, sendError} = require('../utils/response'); 
 const Users = require('../models/users');
 const userAuth = require('../middlewares/auth');  
 const rateLimiter = require('../middlewares/rateLimiter');
@@ -12,10 +11,10 @@ const { getCache, setCache, delCache } = require('../utils/redis');
 const redis = require('../config/redis'); 
 const { restockQueue } = require('../config/queue');
 
-router.post('/book', async (req, res) => { // add rate limiter as M.W. : rateLimiter('book', 30, 5)
+router.post('/book', userAuth, rateLimiter('book', 30, 5), async (req, res) => { // add rate limiter as M.W. : rateLimiter('book', 30, 5)
     try{
-        const dummyId = '6a806f9d4b4b7a3fdf7b1a1a';// add userAuth after tests
-        req.user = {_id : dummyId} 
+        // const dummyId = '6a806f9d4b4b7a3fdf7b1a1a';// add userAuth after tests
+        // req.user = {_id : dummyId} 
         const {eventId, ticketDetails} = req.body; 
         if(!eventId || !ticketDetails || !Array.isArray(ticketDetails) || ticketDetails.length === 0){
             return sendError(res, 400, 'Invalid event details'); 
@@ -83,9 +82,6 @@ router.post('/book', async (req, res) => { // add rate limiter as M.W. : rateLim
                     quantity
                 }); 
             }
-            // console.log("Lock acquired by "+req.user.userName+" ! Sleeping for 10 seconds...");
-            // await new Promise(resolve => setTimeout(resolve, 10000));
-            // console.log("Waking up, processing database transaction...");
 
             // create the actual booking request 
             const bookingRequest = [];
