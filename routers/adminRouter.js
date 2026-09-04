@@ -115,7 +115,7 @@ router.get('/analytics/summary', userAuth, async (req, res) => {
         if(req.user.role !== 'Admin'){
             return sendError(res, 401, 'Only admins can analyze the data.')
         }
-        const cacheKey = `cache:analytics:summary`;
+        const cacheKey = `cache:analytics:summary1`;
         let summaryData; 
         summaryData = await getCache(cacheKey); 
         if(summaryData){
@@ -138,6 +138,22 @@ router.get('/analytics/summary', userAuth, async (req, res) => {
         // Filter data to save LLM tokens (Only send events that are almost sold out)
         const criticalInventory = riskyEvents.filter(event => event.almostSoldOut === true);
 
+        // Anonymized -- this is the ONLY shape of user data that ever reaches the LLM
+        const topSpendersSummary = {
+            count: topUsers.length,
+            combinedRevenue: topUsers.reduce((sum, u) => sum + u.totalUserValue, 0),
+            highestSingleSpend: topUsers[0]?.totalUserValue || 0
+        };
+
+        const promptData = {
+            topPerformingEvents: eventRevenue,
+            categoryPerformance: categoryRevenue,
+            almostSoldOutEvents: criticalInventory,
+            bookingSuccessRates: confirmRates,
+            topSpendersSummary
+        };
+
+        // Full detail -- stays in OUR response only, never sent externally
         const rawData = {
             topPerformingEvents: eventRevenue,
             categoryPerformance: categoryRevenue,
@@ -153,7 +169,7 @@ router.get('/analytics/summary', userAuth, async (req, res) => {
             Highlight the highest-grossing events/categories, identify if any events are critically close to selling out (almostSoldOutEvents), and mention the overall booking success rates.            
             Keep it highly professional, metric-driven, and easy to read. 
             Do NOT use markdown formatting (no bolding, no asterisks). Just return plain text.          
-            Here is the data: ${JSON.stringify(rawData)}
+            Here is the data: ${JSON.stringify(promptData)}
         `;
 
         let aiSummary = "AI analysis is currently unavailable. Please view the raw charts.";
@@ -171,7 +187,7 @@ router.get('/analytics/summary', userAuth, async (req, res) => {
             charts: rawData 
         }
         await setCache(cacheKey, summaryData, 180)
-        return sendSuccess(res, 200, summaryData);
+        return sendSuccess(res, 200, 'Analytics summary fetched successfully', summaryData);
     }catch(err){
         console.error('ERROR-AdminAnalytics:', err.message);
         return sendError(res, 500, 'Failed to fetch analytics data');
