@@ -29,7 +29,6 @@ app.use('/', getRouter);
 
 
 app.get('/', (req, res, next) => {
-    console.log('--- this is home ---');
     return sendSuccess(res, 200, 'This is Home Page', {} );
 })
 
