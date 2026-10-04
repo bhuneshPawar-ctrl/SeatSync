@@ -37,9 +37,7 @@ app.use((req, res) => {
 })
 
 app.use((err, req, res, next) => {
-    if(err){
-        console.error('ERROR - global error handeler', err);
-        return sendError(res, 500, 'Unexpected Error'); 
-    }
-    next(); 
+    console.error('ERROR - global error handeler', err);
+    if(res.headersSent) return next(err); 
+    return sendError(res, 500, 'Unexpected Error'); 
 });
