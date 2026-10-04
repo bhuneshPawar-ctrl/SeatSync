@@ -2,14 +2,12 @@ const { Worker, JobScheduler } = require('bullmq');
 const { bullRedisConnection } = require('../config/queue'); 
 const Bookings = require('../models/bookings'); 
 const Events = require('../models/events'); 
-const { findOneAndUpdate } = require('../models/users');
 const mongoose = require('mongoose');
 
 const restockWorker = new Worker('ticket-restock', async (job) => {
     const bookingId = job.data; 
     const booking = await Bookings.findById(bookingId); 
     if(!booking) return;
-    console.log('in-worker: ') 
     
     if(booking.status === 'PENDING'){
         //user never paid, cancel the booking and restock the inventory
